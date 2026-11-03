@@ -45,40 +45,51 @@ The service's STATIC call behavior, set once by `setup_service.py`, builds the s
 ## Call flow
 
 ```
- Customer             Sinch                                   Server (app.py)        Agent
-    │── calls ──────────▶│ answer, bridge, dial ai-agent            │                    │
-    │                    │── connect ─────────────────────────────▶│ answer + greeting  │
-    │◀── "Welcome to Acme Fiber support… press 1…" ───────────────│                    │
-    │── speaks ─────────▶│── text (transcript) ───────────────────▶│── reply() ────────▶│
-    │◀── AI reply ───────────────────────────────────────────────│◀──────────────────│
-    │                    │            … conversation …             │                    │
-    │      (the agent calls transfer_to_human, or the customer presses 1)               │
-    │                    │◀── interrupt (stop any AI speech) ──────│                    │
-    │                    │◀── PATCH /sessions/{sessionId}/calls/inbound                 │
-    │◀── "I'm connecting you with a technician." + hold music     │  (stays silent)    │
-    │                    │── dial tech-1 → tech-2 → tech-3          │                    │
-    │                    │   first to answer: whisper, then        │                    │
-    │◀═══ talks to the technician ═══▶ main-bridge, hangup ai-agent ─▶ WebSocket closes │
+Customer calls the Sinch number
+   │
+   ▼
+Sinch answers and connects the call to the AI agent
+   │
+   ▼
+Customer talks with the AI agent
+   │
+   ▼
+Handoff starts when either:
+  • the agent decides the call needs a human (transfer_to_human)
+  • the customer presses 1
+   │
+   ▼
+The server updates the live call with the transfer instructions
+   │
+   ▼
+Customer hears a transfer notice and hold music
+Sinch dials technicians 1, 2 and 3, one after another
+   │
+   ├── someone answers ──► they hear a short summary of the problem,
+   │                       then are connected to the customer
+   │
+   └── nobody answers ───► "Sorry, no technician is available…"
+                           and the call ends
 ```
 
-**1. Greeting.** On the Voice Relay `connect` message, the server answers, creates the call state and an agent instance, and sends the greeting.
+1. **The call starts.** The customer dials the Sinch number. The STATIC call
+   behavior answers `inbound`, puts it in `main-bridge`, and dials `ai-agent`
+   into the same bridge. From here on Sinch does the speech work and our server
+   only exchanges text.
 
-**2. Conversation.** Each transcript goes to the agent, and its reply goes back as a Voice Relay `text`. If the LLM fails on a turn, the server says a fixed apology instead, so the customer never hears silence.
+2. **The AI handles the call.** Transcripts arrive over the WebSocket, the
+   agent replies with text, Sinch speaks it. The greeting offers pressing 1.
 
-**3. Handoff.** When the agent calls `transfer_to_human` or the customer presses 1, the server:
+3. **Something triggers a handoff.** Either the agent calls
+   `transfer_to_human(reason, summary)`, or the customer presses 1 and the
+   server asks the agent for a summary. Both paths end in the same place: one
+   `PATCH` to the `inbound` leg.
 
-1. Marks the call as handed off. From then on it ignores transcripts and DTMF, and never calls the LLM again.
-2. Sends a Voice Relay `interrupt`, so AI speech still playing (such as the greeting) does not overlap the transfer notice.
-3. Appends the reason and the summary to the handoff log (`handoffs.jsonl`).
-4. Sends the handoff `PATCH` to the `inbound` leg.
-
-**4. Technicians ring.** The customer hears the transfer notice and then the hold music on their own leg. Technicians are dialed one at a time, each for `DIAL_TIMEOUT_SECONDS`. If one doesn't answer, the next is dialed.
-
-**5a. A technician answers.** The whisper plays on the technician's leg only, while the customer keeps hearing the music. When the whisper ends, Sinch stops the music, puts the technician in `main-bridge` with the customer and hangs up `ai-agent`. That closes the WebSocket.
-
-**5b. Nobody answers.** After `tech-3` times out, Sinch stops the music, tells the customer "Sorry, no technician is available right now. Please call us again later." and hangs up both `ai-agent` and `inbound`.
-
-**6. End.** When the customer or the technician hangs up, `onHangup` handlers hang up the other legs.
+4. **Sinch runs the handoff on its own.** It tells the customer it is
+   connecting them and plays hold music, dials `tech-1`, `tech-2` and `tech-3`
+   in order, whispers the summary to the first one who answers and bridges them
+   with the customer, dropping `ai-agent`. If nobody answers, it tells the
+   customer and hangs up.
 
 ## Escalation
 

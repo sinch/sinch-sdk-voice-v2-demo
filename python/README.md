@@ -3,17 +3,33 @@
 A customer calls a Sinch number and an AI agent answers through Voice Relay: Sinch does speech-to-text and text-to-speech, and this server only exchanges text with the agent. When the agent decides the call needs a human, or the customer presses 1, the server sends one `PATCH` and Sinch does the rest. It plays a transfer notice and hold music, dials the technicians in order, plays a summary (the "whisper") to the first one who answers, bridges them with the customer and drops the AI leg. If nobody answers, the customer is told to call again later.
 
 ```
-caller ──► Sinch number ──► service (STATIC call behavior)
-                              answer → bridgeCall main-bridge → dial VOICE_RELAY "ai-agent"
-                                                                   │
-                                          wss://<public-host>/relay ▼
-                                                            this server (app.py) ── Claude (Strands Agents)
-                                                                   │
-  transfer_to_human or DTMF 1 → PATCH /sessions/{sessionId}/calls/inbound   (customer's leg)
-                          "I'm connecting you with a technician." + hold music
-                          dial tech-1 → whisper → stop music, bridgeCall main-bridge, hangup ai-agent
-                          (no answer) dial tech-2 → … → dial tech-3
-                          (nobody) stop music, "Sorry, no technician…" → hangup ai-agent, hangup inbound
+Customer calls the Sinch number
+   │
+   ▼
+Sinch answers and connects the call to the AI agent.
+   │
+   ▼
+Customer talks with the AI agent
+   │
+   ├── the agent decides the call needs a human (transfer_to_human)
+   └── or the customer presses 1
+   │
+   ▼
+The server updates the live call with the transfer instructions.
+   │
+   ▼
+Customer hears a transfer notice and hold music.
+Sinch dials the first technician.
+   │                            │
+ answers                    no answer
+   │                            │
+   ▼                            ▼
+Technician hears a        Sinch dials the next one
+short summary of the      (up to 3 technicians).
+problem, then is                │
+connected to the          If nobody answers:
+customer.                 "Sorry, no technician is
+                          available…" and hang up.
 ```
 
 The use case, call flow and escalation rules are in [`docs/use-case.md`](../docs/use-case.md).
