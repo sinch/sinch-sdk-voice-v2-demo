@@ -98,7 +98,7 @@ async def handle_transcript(
             await send(websocket, RelayMessages.text(APOLOGY))
         return
 
-    await send(websocket, RelayMessages.text(reply))
+    await send(websocket, RelayMessages.text(reply or APOLOGY))
 
 
 def create_app() -> Starlette:

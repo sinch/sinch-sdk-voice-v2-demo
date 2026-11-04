@@ -24,7 +24,7 @@ STT_LANGUAGE: str = "en-US"
 GREETING: str = "Welcome to Acme Fiber support. Please describe your problem, or press 1 at any time to talk to a technician."
 PORT: int = 8000
 DIAL_TIMEOUT_SECONDS: int = 15
-LLM_MODEL: str = "claude-sonnet-5-5"
+LLM_MODEL: str = "gemini-3.5-flash-lite"
 
 # Only needed by call_sinch_phone_number.py.
 OPTIONAL: list[str] = ["TEST_FROM_NUMBER", "TEST_PHONE_NUMBER"]

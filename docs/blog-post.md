@@ -27,7 +27,7 @@ From the customer's perspective, the handoff works like this:
 2. The first technician who answers hears a short summary of the problem written by the AI, and is then connected to the customer.
 3. If nobody answers, the customer hears "Sorry, no technician is available right now. Please call us again later." and the call ends.
 
-The full code is in the [sinch-sdk-voice-v2-demo](https://github.com/sinch/sinch-sdk-voice-v2-demo) repository. The snippets in this post are in Python and use the [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python), which has helpers to build every Voice API v2 command. The agent uses [Strands Agents](https://strandsagents.com/) with Anthropic's Claude, but both can be substituted with any framework and model that support tool calling.
+The full code is in the [sinch-sdk-voice-v2-demo](https://github.com/sinch/sinch-sdk-voice-v2-demo) repository. The snippets in this post are in Python and use the [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python), which has helpers to build every Voice API v2 command. The agent uses Google's [Agent Development Kit (ADK)](https://google.github.io/adk-docs/) with Gemini, but both can be substituted with any framework and model that support tool calling.
 
 ## How it works
 
@@ -56,10 +56,10 @@ For the transfer, your server sends that whole decision tree to the inbound leg 
 
 ## You'll need
 
-- Python 3.10 or later.
+- Python 3.11 or later.
 - A [Sinch](https://dashboard.sinch.com/) project with an access key (Dashboard → Settings → Access Keys).
 - A Voice API v2 service with a phone number assigned to it. The setup script **overwrites that service's call behavior**.
-- An [Anthropic API key](https://console.anthropic.com/).
+- A [Gemini API key](https://aistudio.google.com/apikey) from Google AI Studio.
 - One to three mobile phones for the technicians, plus a phone to call from that isn't one of them.
 - [ngrok](https://ngrok.com/), or any tunnel that supports WebSockets.
 
@@ -84,7 +84,7 @@ Fill in `.env`:
 | `SINCH_NUMBER` | The number assigned to that service. |
 | `TECHNICIAN_NUMBERS` | Three technician mobiles in dialing order, E.164, comma-separated. Repeat a number if you have fewer. |
 | `HOLD_MUSIC_URL` | A public URL of an MP3 to play while technicians ring. |
-| `LLM_API_KEY` | Your Anthropic API key. |
+| `LLM_API_KEY` | Your Gemini API key. |
 | `RELAY_PUBLIC_URL` | Your server's public WebSocket URL. You set it in the next step. |
 
 Start a tunnel in a separate terminal:
@@ -171,11 +171,10 @@ The agent has a single tool, `transfer_to_human`. The system prompt tells it whe
 | The problem needs a technician, such as no signal at the fiber terminal. | `needs_technician` |
 | The conversation makes no progress. | `stuck` |
 
-The tool doesn't transfer anything. It only records the request:
+The tool is a plain Python function. ADK builds the tool declaration from its signature and docstring. The tool doesn't transfer anything. It only records the request:
 
 <!-- snippet: transfer-tool -->
 ```python
-@tool
 def transfer_to_human(reason: TransferReason, summary: str) -> str:
     """Transfer the call to a human technician.
 
@@ -197,7 +196,7 @@ if agent.transfer_request is not None:
     request = agent.transfer_request
     await start_handoff(websocket, session, config, client, request.reason, request.summary)
     return
-await send(websocket, RelayMessages.text(reply))
+await send(websocket, RelayMessages.text(reply or APOLOGY))
 ```
 
 The `summary` is what the technician hears, so the prompt asks for two or three sentences that can be spoken in under 15 seconds.
@@ -312,4 +311,4 @@ Call your Sinch number from a phone that isn't in `TECHNICIAN_NUMBERS`. Things t
 - [Connect AI Agents to Phone Calls with Sinch Voice API v2](https://dev.to/gunnargrosch/connect-ai-agents-to-phone-calls-with-sinch-voice-api-v2-4o1p)
 - [Demo repository](https://github.com/sinch/sinch-sdk-voice-v2-demo)
 - [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python)
-- [Strands Agents](https://strandsagents.com/)
+- [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/)

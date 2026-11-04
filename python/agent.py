@@ -1,14 +1,19 @@
-"""AI support agent (Strands Agents + Anthropic). Swap the framework here without touching app.py."""
+"""AI support agent (Google ADK + Gemini)."""
 
+import uuid
 from typing import Any, Literal
 
 from config import Config
-from strands import Agent, tool
-from strands.models.anthropic import AnthropicModel
+from google.adk.agents import Agent
+from google.adk.models.google_llm import Gemini
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
 
-MAX_TOKENS: int = 1024
+APP_NAME: str = "acme_fiber"
+USER_ID: str = "caller"
 
-# Strands rejects any other value before calling the tool.
+# ADK declares these values to the model as an enum.
 TransferReason = Literal["customer_request", "out_of_scope", "stuck", "needs_technician"]
 
 SYSTEM_PROMPT: str = """You are the phone support agent of Acme Fiber, an internet provider.
@@ -43,34 +48,46 @@ class TransferRequest:
 class SupportAgent:
     def __init__(self, config: Config) -> None:
         self.transfer_request: TransferRequest | None = None
-        model: AnthropicModel = AnthropicModel(
-            client_args={"api_key": config.llm_api_key},
-            model_id=config.llm_model,
-            max_tokens=MAX_TOKENS,
-        )
-        self._agent: Agent = Agent(
+        model: Gemini = Gemini(model=config.llm_model, client_kwargs={"api_key": config.llm_api_key})
+        agent: Agent = Agent(
+            name="acme_fiber_support",
             model=model,
-            system_prompt=SYSTEM_PROMPT,
+            instruction=SYSTEM_PROMPT,
             tools=self._create_tools(),
-            callback_handler=None,
         )
+        # One in-memory session per call holds the conversation history.
+        self._session_id: str = str(uuid.uuid4())
+        self._runner: Runner = Runner(
+            app_name=APP_NAME,
+            agent=agent,
+            session_service=InMemorySessionService(),
+            auto_create_session=True,
+        )
+        self._has_conversation: bool = False
 
     async def reply(self, text: str) -> str:
         self.transfer_request = None
-        result = await self._agent.invoke_async(text)
-        return str(result).strip()
+        self._has_conversation = True
+        return await self._run(text)
 
     def has_conversation(self) -> bool:
-        return len(self._agent.messages) > 0
+        return self._has_conversation
 
     async def summarize(self) -> str:
-        result = await self._agent.invoke_async(SUMMARY_PROMPT)
-        return str(result).strip()
+        return await self._run(SUMMARY_PROMPT)
+
+    async def _run(self, text: str) -> str:
+        message: types.Content = types.UserContent(text)
+        reply: str = ""
+        async for event in self._runner.run_async(user_id=USER_ID, session_id=self._session_id, new_message=message):
+            if event.is_final_response() and event.content and event.content.parts:
+                reply = "".join(part.text or "" for part in event.content.parts)
+        return reply.strip()
 
     def _create_tools(self) -> list[Any]:
-        # Add your own tools here, and list them in the return value and in SYSTEM_PROMPT. For example:
+        # Add your own tools here as plain functions (ADK reads their signature and docstring),
+        # and list them in the return value and in SYSTEM_PROMPT. For example:
         #
-        # @tool
         # def lookup_account(account_number: str) -> dict[str, Any]:
         #     """Look up a customer account by account number.
         #
@@ -79,7 +96,6 @@ class SupportAgent:
         #     """
         #     return your_crm.get_account(account_number)
         #
-        # @tool
         # def get_ticket_status(account_number: str) -> dict[str, Any]:
         #     """Get the open support ticket of an account, if any.
         #
@@ -88,7 +104,6 @@ class SupportAgent:
         #     """
         #     return your_ticketing.get_open_ticket(account_number)
 
-        @tool
         def transfer_to_human(reason: TransferReason, summary: str) -> str:
             """Transfer the call to a human technician.
 

@@ -41,18 +41,18 @@ The use case, call flow and escalation rules are in [`docs/use-case.md`](../docs
 | `config.py` | Loads and validates environment variables; creates the Sinch client. |
 | `setup_service.py` | Sets the service STATIC call behavior with the SDK SVAML helpers. Run it again whenever the public URL changes. |
 | `app.py` | Starlette server: `WS /relay` (Voice Relay, call state, the keypad option) and `GET /health`. |
-| `agent.py` | Strands agent (Anthropic) with the `transfer_to_human` tool. |
+| `agent.py` | Google ADK agent (Gemini) with the `transfer_to_human` tool. |
 | `handoff.py` | Builds the handoff SVAML with the SDK helpers, sends the `PATCH` and writes the handoff log. |
 | `relay_protocol.py` | `RelayMessages`: parses and builds Voice Relay messages. |
 | `call_sinch_phone_number.py` | Test helper: rings your phone from a Sinch number and bridges you with a call to `SINCH_NUMBER`. |
 
 ## Prerequisites
 
-- Python 3.10 or later.
+- Python 3.11 or later (required by Google ADK).
 - A Sinch project with an access key (Dashboard → Settings → Access Keys).
 - A Voice API v2 service with a phone number assigned to it. `setup_service.py` **overwrites that service's call behavior**.
 - The Sinch client uses the **North America** voice region (`create_sinch_client` in `config.py`). If your calls live in another region, change `voice_region`.
-- An Anthropic API key.
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
 - One to three technician mobiles.
 - [ngrok](https://ngrok.com/) (or any tunnel that supports WebSockets).
 
@@ -62,7 +62,7 @@ All commands in this README run from the `python/` directory, with the virtual e
 
 ```bash
 cd python
-python3 -m venv .venv   # python3 --version must be 3.10 or later
+python3 -m venv .venv   # python3 --version must be 3.11 or later
 .venv/bin/pip install -r requirements.txt
 ```
 
@@ -82,7 +82,7 @@ Fill in the Sinch credentials, `SINCH_SERVICE_ID`, `SINCH_NUMBER`, `TECHNICIAN_N
 | `TECHNICIAN_NUMBERS` | Exactly three technician mobiles in dialing order, E.164, comma-separated. They are dialed as `tech-1`, `tech-2`, `tech-3`. Repeat a number if you have fewer. |
 | `RELAY_PUBLIC_URL` | Public `wss://…/relay` URL of this server |
 | `HOLD_MUSIC_URL` | Public URL of the hold music (e.g. an MP3). It does not loop, so make it last about 70 s (3 × `DIAL_TIMEOUT_SECONDS` plus the whisper). The sample in `.env.example` lasts only 12 s. |
-| `LLM_API_KEY` | Anthropic API key |
+| `LLM_API_KEY` | Gemini API key. The model is set by `LLM_MODEL` in `config.py` (`gemini-3.5-flash-lite`). |
 | `TEST_FROM_NUMBER`, `TEST_PHONE_NUMBER` | Optional. Only for `call_sinch_phone_number.py` (step 6) |
 
 ## 3. Expose the server

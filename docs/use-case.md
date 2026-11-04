@@ -1,6 +1,6 @@
 # Acme Fiber: AI voice agent with mid-call handoff to a human
 
-Sinch Voice API v2 · Voice Relay · Sinch SDK Python · Strands Agents
+Sinch Voice API v2 · Voice Relay · Sinch SDK Python · Google ADK
 
 ## Summary
 
@@ -112,6 +112,6 @@ There is no keyword rule (such as matching "human" or "agent" in the transcript)
 
 ## Scope
 
-**In scope:** inbound PSTN call to a Sinch number; AI agent over Voice Relay with Strands Agents and Anthropic; escalation through an LLM tool and the keypad; handoff with sequential dialing to three technicians and a whisper; what happens when nobody answers or the LLM fails; English (`en-US`).
+**In scope:** inbound PSTN call to a Sinch number; AI agent over Voice Relay with Google ADK and Gemini; escalation through an LLM tool and the keypad; handoff with sequential dialing to three technicians and a whisper; what happens when nobody answers or the LLM fails; English (`en-US`).
 
 **Out of scope:** audio streaming (STREAM/PCM); SIP or app destinations; queues and real agent availability; recording and analytics; persistent history; a real CRM or ticketing system (`agent.py` shows, commented out, where such tools would go); production deployment (the demo uses an ngrok-style tunnel).
