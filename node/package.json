@@ -1,0 +1,29 @@
+{
+  "name": "acme-fiber-voice-agent",
+  "version": "1.0.0",
+  "description": "Acme Fiber voice agent: Sinch Voice API v2 handoff demo",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/app.ts",
+    "setup-service": "tsx src/setup-service.ts",
+    "call-sinch-phone-number": "tsx src/call-sinch-phone-number.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/adk": "^2.4.0",
+    "@sinch/sdk-core": "^1.8.0",
+    "dotenv": "^18.0.9",
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
