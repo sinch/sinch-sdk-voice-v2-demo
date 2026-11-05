@@ -1,7 +1,7 @@
 ---
 title: Hand Off an AI Voice Agent to a Human Mid-Call with Sinch Voice API v2
 published: false
-tags: ai, voice, python, tutorial
+tags: ai, voice, tutorial
 ---
 
 An AI agent on the phone can be very helpful and answer a lot of questions, but some requests have to be handled by a human. When that happens, the caller shouldn't have to hang up, dial another number and explain the problem all over again.
@@ -27,7 +27,7 @@ From the customer's perspective, the handoff works like this:
 2. The first technician who answers hears a short summary of the problem written by the AI, and is then connected to the customer.
 3. If nobody answers, the customer hears "Sorry, no technician is available right now. Please call us again later." and the call ends.
 
-The full code is in the [sinch-sdk-voice-v2-demo](https://github.com/sinch/sinch-sdk-voice-v2-demo) repository. The snippets in this post are in Python and use the [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python), which has helpers to build every Voice API v2 command. The agent uses Google's [Agent Development Kit (ADK)](https://google.github.io/adk-docs/) with Gemini, but both can be substituted with any framework and model that support tool calling.
+The full code is in the [sinch-sdk-voice-v2-demo](https://github.com/sinch/sinch-sdk-voice-v2-demo) repository. The demo is available in Python, Node.js and Java, and the snippets in this post show the three versions one after the other. They use the [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python), the [Sinch Node.js SDK](https://github.com/sinch/sinch-sdk-node) and the [Sinch Java SDK](https://github.com/sinch/sinch-sdk-java), which have helpers to build every Voice API v2 command. The agent uses Google's [Agent Development Kit (ADK)](https://google.github.io/adk-docs/) with Gemini, but both can be substituted with any framework and model that support tool calling.
 
 ## How it works
 
@@ -56,7 +56,10 @@ For the transfer, your server sends that whole decision tree to the inbound leg 
 
 ## You'll need
 
-- Python 3.11 or later.
+- One of the following runtimes:
+  - Python 3.11 or later.
+  - Node.js 22 or later.
+  - Java 17 or later and Maven 3.9 or later.
 - A [Sinch](https://dashboard.sinch.com/) project with an access key (Dashboard → Settings → Access Keys).
 - A Voice API v2 service with a phone number assigned to it. The setup script **overwrites that service's call behavior**.
 - A [Gemini API key](https://aistudio.google.com/apikey) from Google AI Studio.
@@ -65,15 +68,39 @@ For the transfer, your server sends that whole decision tree to the inbound leg 
 
 ## Set up the project
 
-Clone the repository and install the dependencies:
+Clone the repository, go to the folder of your language and install the dependencies:
 
 ```bash
 git clone https://github.com/sinch/sinch-sdk-voice-v2-demo.git
-cd sinch-sdk-voice-v2-demo/python
+cd sinch-sdk-voice-v2-demo
+```
+
+**Python**
+
+```bash
+cd python
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
 ```
+
+**Node.js**
+
+```bash
+cd node
+npm install
+cp .env.example .env
+```
+
+**Java**
+
+```bash
+cd java
+mvn -q compile
+cp .env.example .env
+```
+
+The rest of the commands in this post run from that folder.
 
 Fill in `.env`:
 
@@ -106,6 +133,8 @@ The service's call behavior decides what happens when someone calls the number. 
 The SDK's SVAML helpers build the sequence:
 
 <!-- snippet: service-call-behavior -->
+**Python**
+
 ```python
 client.voice.v2.services.update(
     config.sinch_service_id,
@@ -131,8 +160,78 @@ client.voice.v2.services.update(
 )
 ```
 
-- `name=INBOUND` names the customer's leg `inbound`.
-- The `on_hangup` cleans up every other leg when the customer hangs up, including technicians who are still ringing.
+**Node.js**
+
+```typescript
+await client.voice.v2.services.update({
+  serviceId: config.sinchServiceId,
+  updateServiceRequestBody: {
+    callBehavior: Voice.v2.CallBehaviorHelper.static({
+      commands: new Voice.v2.CommandsSequenceCreator()
+        .answer()
+        .bridgeCall(MAIN_BRIDGE)
+        .dial((dial) =>
+          dial
+            .to(
+              Voice.v2.Destination.voiceRelay({
+                endpoint: config.relayPublicUrl,
+                ttsVoice: config.ttsVoice,
+                sttLanguage: config.sttLanguage,
+              }),
+            )
+            .name(AI_AGENT)
+            .onAnswer((onAnswer) => onAnswer.bridgeCall(MAIN_BRIDGE)),
+        )
+        .build(),
+      name: INBOUND,
+      // When the caller hangs up, hang up the AI leg and every technician leg.
+      onHangup: new Voice.v2.CommandsSequenceCreator()
+        .hangup({ name: AI_AGENT })
+        .hangup({ name: 'tech-1' })
+        .hangup({ name: 'tech-2' })
+        .hangup({ name: 'tech-3' })
+        .build(),
+    }),
+  },
+});
+```
+
+**Java**
+
+```java
+Consumer<CommandsSequenceCreator> answerAndDialAgent =
+    commands ->
+        commands
+            .answer()
+            .bridgeCall(MAIN_BRIDGE)
+            .dial(
+                Destination.voiceRelay(
+                    config.relayPublicUrl(), config.ttsVoice(), config.sttLanguage()),
+                dial -> dial.name(AI_AGENT).onAnswer(onAnswer -> onAnswer.bridgeCall(MAIN_BRIDGE)));
+
+// When the caller hangs up, hang up the AI leg and every technician leg.
+Consumer<CommandsSequenceCreator> hangupLegs =
+    onHangup -> {
+      onHangup.hangup(AI_AGENT);
+      TECHNICIAN_CALL_NAMES.forEach(onHangup::hangup);
+    };
+
+client
+    .voice()
+    .v2()
+    .services()
+    .update(
+        config.sinchServiceId(),
+        UpdateServiceRequest.builder()
+            .setCallBehavior(
+                CallBehaviorHelper.staticBehavior(answerAndDialAgent)
+                    .name(INBOUND)
+                    .onHangup(hangupLegs)
+                    .build())
+            .build());
+```
+
+The customer's leg is named inbound, so later we can update it by name. It also has a hangup handler so when the customer hangs up, Sinch ends every other leg, including technicians who are still ringing.
 
 ## Talk to the caller over Voice Relay
 
@@ -141,6 +240,8 @@ Your server exposes one WebSocket endpoint, `/relay`. When a call starts, Sinch 
 This is the core of the message loop:
 
 <!-- snippet: relay-loop -->
+**Python**
+
 ```python
 while True:
     message = RelayMessages.parse(await websocket.receive_text())
@@ -158,6 +259,44 @@ while True:
         await request_technician(websocket, session, config, client)
 ```
 
+**Node.js**
+
+```typescript
+const message = RelayMessages.parse(raw);
+const command = message.command;
+
+if (command === RelayMessages.CONNECT) {
+  session = new CallSession(String(message.callId), new SupportAgent(config));
+  send(websocket, RelayMessages.answer());
+  send(websocket, RelayMessages.text(config.greeting));
+} else if (session.handoffStarted) {
+  return;
+} else if (command === RelayMessages.TEXT && !message.isCorrection) {
+  await handleTranscript(websocket, session, config, client, String(message.text ?? ''));
+} else if (command === RelayMessages.DTMF && String(message.sequence ?? '').includes('1')) {
+  await requestTechnician(websocket, session, config, client);
+}
+```
+
+**Java**
+
+```java
+JsonNode message = RelayMessages.parse(raw);
+String command = message.get("command").asText();
+
+if (command.equals(RelayMessages.CONNECT)) {
+  session = new CallSession(message.path("callId").asText(), new SupportAgent(config));
+  send(websocket, RelayMessages.answer());
+  send(websocket, RelayMessages.text(config.greeting()));
+} else if (session.handoffStarted) {
+  return;
+} else if (command.equals(RelayMessages.TEXT) && !message.path("isCorrection").asBoolean(false)) {
+  handleTranscript(websocket, session, message.path("text").asText(""));
+} else if (command.equals(RelayMessages.DTMF) && message.path("sequence").asText("").contains("1")) {
+  requestTechnician(websocket, session);
+}
+```
+
 Each transcript goes to the agent, except corrections: Sinch can send a corrected version of a transcript it already sent, and the demo skips those so the agent doesn't answer the same sentence twice. A `dtmf` message with a 1 starts the transfer without asking the agent.
 
 ## Let the agent decide: the transfer tool
@@ -171,9 +310,11 @@ The agent has a single tool, `transfer_to_human`. The system prompt tells it whe
 | The problem needs a technician, such as no signal at the fiber terminal. | `needs_technician` |
 | The conversation makes no progress. | `stuck` |
 
-The tool is a plain Python function. ADK builds the tool declaration from its signature and docstring. The tool doesn't transfer anything. It only records the request:
+ADK builds the tool declaration from the function's signature and descriptions. The tool doesn't transfer anything. It only records the request:
 
 <!-- snippet: transfer-tool -->
+**Python**
+
 ```python
 def transfer_to_human(reason: TransferReason, summary: str) -> str:
     """Transfer the call to a human technician.
@@ -187,9 +328,49 @@ def transfer_to_human(reason: TransferReason, summary: str) -> str:
     return "Transfer requested."
 ```
 
+**Node.js**
+
+```typescript
+const transferToHuman = new FunctionTool({
+  name: 'transfer_to_human',
+  description: 'Transfer the call to a human technician.',
+  parameters: z.object({
+    reason: z.enum(TRANSFER_REASONS).describe('Why the call is transferred.'),
+    summary: z
+      .string()
+      .describe(
+        'Two or three sentences for the technician: account number if known, the problem, and what was already tried.',
+      ),
+  }),
+  execute: ({ reason, summary }) => {
+    this.transferRequest = { reason, summary };
+    return 'Transfer requested.';
+  },
+});
+```
+
+**Java**
+
+```java
+@Schema(name = "transfer_to_human", description = "Transfer the call to a human technician.")
+public String transferToHuman(
+    @Schema(name = "reason", description = "Why the call is transferred.") TransferReason reason,
+    @Schema(
+            name = "summary",
+            description =
+                "Two or three sentences for the technician: account number if known, the"
+                    + " problem, and what was already tried.")
+        String summary) {
+  transferRequest = new TransferRequest(reason, summary);
+  return "Transfer requested.";
+}
+```
+
 The server checks whether the agent called the tool and, if it did, starts the transfer:
 
 <!-- snippet: handle-transcript -->
+**Python**
+
 ```python
 reply = await agent.reply(text)
 if agent.transfer_request is not None:
@@ -197,6 +378,30 @@ if agent.transfer_request is not None:
     await start_handoff(websocket, session, config, client, request.reason, request.summary)
     return
 await send(websocket, RelayMessages.text(reply or APOLOGY))
+```
+
+**Node.js**
+
+```typescript
+const reply = await agent.reply(text);
+if (agent.transferRequest !== null) {
+  const request = agent.transferRequest;
+  await startHandoff(websocket, session, config, client, request.reason, request.summary);
+  return;
+}
+send(websocket, RelayMessages.text(reply || APOLOGY));
+```
+
+**Java**
+
+```java
+String reply = agent.reply(text);
+SupportAgent.TransferRequest request = agent.transferRequest();
+if (request != null) {
+  startHandoff(websocket, session, request.reason().toString(), request.summary());
+  return;
+}
+send(websocket, RelayMessages.text(reply.isEmpty() ? APOLOGY : reply));
 ```
 
 The `summary` is what the technician hears, so the prompt asks for two or three sentences that can be spoken in under 15 seconds.
@@ -207,6 +412,8 @@ The `summary` is what the technician hears, so the prompt asks for two or three 
 This is the command sequence the server sends to the `inbound` leg. Only the first technician's `dial` is shown:
 
 <!-- snippet: handoff-commands -->
+**Python**
+
 ```python
 whisper = "Acme Fiber transfer. " + summary
 
@@ -235,6 +442,72 @@ handoff = (
 )
 ```
 
+**Node.js**
+
+```typescript
+const whisperText = 'Acme Fiber transfer. ' + summary;
+
+const handoff = new Voice.v2.CommandsSequenceCreator()
+  .messages((messages) =>
+    messages.name(HOLD_MUSIC).text("I'm connecting you with a technician.", voice).play(config.holdMusicUrl),
+  )
+  .dial((tech1) =>
+    tech1
+      .to(Voice.v2.Destination.phone(config.technicianNumbers[0]))
+      .from(Voice.v2.Destination.phone(config.sinchNumber))
+      .name('tech-1')
+      .timeoutDurationSeconds(15)
+      .onAnswer((onAnswer) =>
+        onAnswer.text(whisperText, voice, {
+          // Stop the music, join the customer and drop the AI.
+          onFinish: (onFinish) =>
+            onFinish.stopMessages(HOLD_MUSIC).bridgeCall(MAIN_BRIDGE).hangup({ name: AI_AGENT }),
+        }),
+      )
+      .onTimeout(/* The same dial for tech-2, which nests tech-3. */)
+      .onHangup((onHangup) => onHangup.hangup({ name: INBOUND })),
+  )
+  .build();
+```
+
+**Java**
+
+```java
+String whisperText = "Acme Fiber transfer. " + summary;
+
+List<SvamlCommand> handoff =
+    CommandsSequenceCreator.create()
+        .messages(
+            messages ->
+                messages
+                    .name(HOLD_MUSIC)
+                    .text("I'm connecting you with a technician.", voice)
+                    .play(config.holdMusicUrl()))
+        .dial(
+            Destination.phone(technicians.get(0)),
+            tech1 ->
+                tech1
+                    .from(Destination.phone(config.sinchNumber()))
+                    .name("tech-1")
+                    .timeoutDurationSeconds(15)
+                    .onAnswer(
+                        onAnswer ->
+                            onAnswer.text(
+                                whisperText,
+                                voice,
+                                // Stop the music, join the customer and drop the AI.
+                                whisper ->
+                                    whisper.onFinish(
+                                        onFinish ->
+                                            onFinish
+                                                .stopMessages(HOLD_MUSIC)
+                                                .bridgeCall(MAIN_BRIDGE)
+                                                .hangup(AI_AGENT))))
+                    .onTimeout(/* The same dial for tech-2, which nests tech-3. */)
+                    .onHangup(onHangup -> onHangup.hangup(INBOUND)))
+        .build();
+```
+
 Step by step:
 
 1. **Hold music.** The transfer announcement and the hold music go in a named group of messages (`HOLD_MUSIC`), so a later command can stop them.
@@ -250,14 +523,41 @@ The whisper plays only on the technician's leg. The customer keeps hearing the h
 The server knows the `callId` of the `ai-agent` leg from the `connect` message, but the handoff goes to the `inbound` leg. Both are in the same session, so the server looks up the session and addresses the customer's leg by its name:
 
 <!-- snippet: send-handoff -->
+**Python**
+
 ```python
 session_id = client.voice.v2.calls.get(ai_agent_call_id).session_id
 client.voice.v2.calls.interact_by_call_name(session_id, INBOUND, handoff)
 ```
 
+**Node.js**
+
+```typescript
+const { sessionId } = await client.voice.v2.calls.get({ callId: aiAgentCallId });
+await client.voice.v2.calls.interactByCallName({
+  sessionId,
+  callName: INBOUND,
+  callPatchRequestBody: { commands: handoff },
+});
+```
+
+**Java**
+
+```java
+String sessionId = client.voice().v2().calls().get(aiAgentCallId).getSessionId();
+client
+    .voice()
+    .v2()
+    .calls()
+    .interactByCallName(
+        sessionId, INBOUND, CallPatchRequest.builder().setCommands(handoff).build());
+```
+
 Before sending it, the server sends `interrupt` on the WebSocket to cut off anything the AI is still saying:
 
 <!-- snippet: start-handoff -->
+**Python**
+
 ```python
 async def start_handoff(websocket, session, config, client, reason, summary):
     session.handoff_started = True
@@ -265,18 +565,67 @@ async def start_handoff(websocket, session, config, client, reason, summary):
     await asyncio.to_thread(handoff.run_handoff, client, config, session.call_id, reason, summary)
 ```
 
+**Node.js**
+
+```typescript
+async function startHandoff(websocket, session, config, client, reason, summary) {
+  session.handoffStarted = true;
+  send(websocket, RelayMessages.interrupt()); // Stop any AI speech.
+  await handoff.runHandoff(client, config, session.callId, reason, summary);
+}
+```
+
+**Java**
+
+```java
+void startHandoff(WsContext websocket, CallSession session, String reason, String summary)
+    throws Exception {
+  session.handoffStarted = true;
+  send(websocket, RelayMessages.interrupt()); // Stop any AI speech.
+  Handoff.runHandoff(client, config, session.callId, reason, summary);
+}
+```
+
 ## Try it
 
 Start the server:
+
+**Python**
 
 ```bash
 .venv/bin/uvicorn --factory app:create_app --port 8000
 ```
 
+**Node.js**
+
+```bash
+npm start
+```
+
+**Java**
+
+```bash
+mvn -q compile exec:java
+```
+
 In another terminal, set the service's call behavior. Run it again whenever your ngrok URL changes:
+
+**Python**
 
 ```bash
 .venv/bin/python setup_service.py
+```
+
+**Node.js**
+
+```bash
+npm run setup-service
+```
+
+**Java**
+
+```bash
+mvn -q compile exec:java -Dexec.mainClass=com.sinch.demo.SetupService
 ```
 
 ```
@@ -296,7 +645,7 @@ Call your Sinch number from a phone that isn't in `TECHNICIAN_NUMBERS`. Things t
 - **Hold music doesn't loop.** Make the file last longer than the worst case: three dial timeouts plus the whisper, about 70 seconds in this demo.
 - **The technician list is fixed in the command.** A real contact center would pick technicians by availability or skill.
 - **Tools for real data.** The agent only has the transfer tool. More tools could be added to improve the agent context of the customer like `lookup_account` or `get_ticket_status`.
-- **Region.** The SDK client in `config.py` uses the North America voice region. Change it if your calls live in another one.
+- **Region.** The SDK client is configured to use the North America voice region. Change it if your calls live in another one.
 
 
 ## What's next
@@ -311,4 +660,6 @@ Call your Sinch number from a phone that isn't in `TECHNICIAN_NUMBERS`. Things t
 - [Connect AI Agents to Phone Calls with Sinch Voice API v2](https://dev.to/gunnargrosch/connect-ai-agents-to-phone-calls-with-sinch-voice-api-v2-4o1p)
 - [Demo repository](https://github.com/sinch/sinch-sdk-voice-v2-demo)
 - [Sinch Python SDK](https://github.com/sinch/sinch-sdk-python)
+- [Sinch Node.js SDK](https://github.com/sinch/sinch-sdk-node)
+- [Sinch Java SDK](https://github.com/sinch/sinch-sdk-java)
 - [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/)
