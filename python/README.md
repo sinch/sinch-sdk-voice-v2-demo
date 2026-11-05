@@ -1,6 +1,6 @@
 # Acme Fiber voice agent: Python
 
-A customer calls a Sinch number and an AI agent answers through Voice Relay: Sinch does speech-to-text and text-to-speech, and this server only exchanges text with the agent. When the agent decides the call needs a human, or the customer presses 1, the server sends one `PATCH` and Sinch does the rest. It plays a transfer notice and hold music, dials the technicians in order, plays a summary (the "whisper") to the first one who answers, bridges them with the customer and drops the AI leg. If nobody answers, the customer is told to call again later.
+A customer calls a Sinch number and an AI agent answers through Voice Relay: Sinch does speech-to-text and text-to-speech, and this server only exchanges text with the agent. When the agent decides the call needs a human, or the customer presses 1, the server sends a single `PATCH` request to the customer's leg with the whole handoff described as a tree of SVAML commands and event handlers: play a transfer notice and hold music, dial the technicians in order, and, through `onAnswer` and `onTimeout`, decide what happens next. The first technician who answers hears a summary of the problem (the "whisper") and is bridged with the customer, and the AI leg hangs up. If nobody answers, the customer is told to call again later.
 
 ```
 Customer calls the Sinch number

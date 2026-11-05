@@ -1,6 +1,6 @@
 # Acme Fiber: AI voice agent with mid-call handoff to a human
 
-Sinch Voice API v2 · Voice Relay · Sinch SDK Python · Google ADK
+Sinch Voice API v2 · Voice Relay · Sinch SDKs (Python, Node.js, Java) · Google ADK
 
 ## Summary
 
@@ -22,7 +22,7 @@ Once the handoff starts, the AI stays silent and the call never goes back to it.
 
 ## What the demo shows
 
-- **The Sinch Python SDK and its SVAML v2 helpers.** Every Voice API call and every SVAML sequence is built with the SDK: the service's call behavior, the handoff with its nested dial chain, and the fallback that hangs up.
+- **The Sinch SDKs and their SVAML v2 helpers.** Every Voice API call and every SVAML sequence is built with the SDK (Python, Node.js or Java, with the same behavior): the service's call behavior, the handoff with its nested dial chain, and the fallback that hangs up.
 - **Voice Relay with an LLM agent.** The server never handles audio, only text messages over a WebSocket.
 
 ## Call legs
@@ -35,7 +35,7 @@ The whole call is one Voice API v2 session with one bridge, `main-bridge`. Every
 | `ai-agent` | The Voice Relay leg, connected to our server over a WebSocket. |
 | `tech-1`, `tech-2`, `tech-3` | The technician mobiles, dialed in this order during a handoff. |
 
-The service's STATIC call behavior, set once by `setup_service.py`, builds the starting point:
+The service's STATIC call behavior, set once by the setup script (`setup_service.py`, `setup-service.ts` or `SetupService.java`), builds the starting point:
 
 1. `answer` the `inbound` leg.
 2. `bridgeCall` it into `main-bridge`.
@@ -114,4 +114,4 @@ There is no keyword rule (such as matching "human" or "agent" in the transcript)
 
 **In scope:** inbound PSTN call to a Sinch number; AI agent over Voice Relay with Google ADK and Gemini; escalation through an LLM tool and the keypad; handoff with sequential dialing to three technicians and a whisper; what happens when nobody answers or the LLM fails; English (`en-US`).
 
-**Out of scope:** audio streaming (STREAM/PCM); SIP or app destinations; queues and real agent availability; recording and analytics; persistent history; a real CRM or ticketing system (`agent.py` shows, commented out, where such tools would go); production deployment (the demo uses an ngrok-style tunnel).
+**Out of scope:** audio streaming (STREAM/PCM); SIP or app destinations; queues and real agent availability; recording and analytics; persistent history; a real CRM or ticketing system (the agent file of each implementation shows, commented out, where such tools would go); production deployment (the demo uses an ngrok-style tunnel).
